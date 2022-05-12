@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Show all "Infoboxes" in the area</title>
+    <meta charset="utf-8">
+    <style>html,body{height:100%;}body{padding:0;margin:0;background:#333;}h1{padding:0;margin:0;font-size:50%;color:white;}</style>
+</head>
+<body>
+<!--　課題5：APIアプリ
+    　楽天トラベルの施設検索APIから緯度経度を取得しBing MapにInfoboxを描画する
+     ※参考サイト： Bing Maps Go 　※ Show all "Infoboxes" in the area
+     　https://mapapi.org/open.php?file=example_infoboxs_in_area&h=3
+-->
+
+<h1 id="h1">Infobox :  infoboxs</h1>
+<!-- 
+    プルダウンメニュー
+　　 ※ 今回は、楽天の地区コード取得APIのデータより埼玉県のコードを静的に設定
+-->
+<select id="ctry">
+    <option value="0">選択してください</option>
+    <option value="japan" selected>日本</option>
+</select>
+
+<select id="pref">
+    <option value="0">選択してください</option>
+    <option value="saitama" selected>埼玉県</option>
+</select>
+
+<select id="area">
+    <option value="0" selected>選択してください</option>
+    <option value="saitama">大宮・浦和・川口・上尾</option>
+    <option value="kasukabe">草加・越谷・春日部・羽生</option>
+    <option value="kumagaya">熊谷・深谷・本庄</option>
+    <option value="kawagoe">川越・東松山・志木・和光</option>
+    <option value="tokorozawa">所沢・狭山・飯能</option>
+    <option value="chichibu">秩父・長瀞</option>
+</select>
+<!-- マップ表示領域 -->
+<div id="myMap" style='width:100%;height:98%;'></div>
+
+<!-- jQuery読み込み -->
+<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+
+<!-- [ infobox Object ] https://msdn.microsoft.com/en-us/library/mt712658.aspx -->
+<script src='https://www.bing.com/api/maps/mapcontrol?callback=GetMap&key=[bing Map Key]' async defer></script>
+<script>
+
+let infoboxs  = []; //Put infobox in an array
+let locations = []; //Put location in an array
+
+let map;
+    //Maps Init
+    function GetMap() {
+        map = new Microsoft.Maps.Map('#myMap', {
+            //center: new Microsoft.Maps.Location(locs[0].latitude, locs[0].longitude),
+            center: new Microsoft.Maps.Location(35.845083, 139.665825), //初期値として埼玉県庁の緯度経度を設定
+            zoom: 13
+        });
+
+        //Change the display of the map.
+        map.setView({
+            //bounds: Microsoft.Maps.LocationRect.fromLocations(locations), //fromLocations or fromShapes
+            //padding: 100
+            //center: new Microsoft.Maps.Location(47.6149, -122.1941), //Location center position
+            mapTypeId: Microsoft.Maps.MapTypeId.road, //Type: [load, aerial,canvasDark,canvasLight,birdseye,grayscale,streetside]
+            //zoom: 8  //Zoom:1=zoomOut, 20=zoomUp[ 1~20 ]
+        });
+    }
+
+    //ーーーーーーーーーーーーーーーーーーーーーーーーーーー
+    //プルダウンメニューの動作設定（１：大項目）
+    //　大項目が初期値に戻ったら中・小項目も初期値に戻す
+    $("#ctry").change(function(){
+        if($("#ctry").val()=="0"){
+            $("#pref").val("0");
+            $("#area").val("0");
+        }
+    });
+
+    //ーーーーーーーーーーーーーーーーーーーーーーーーーーー
+    //プルダウンメニューの動作設定（２：中項目）
+    //　中項目が初期値に戻ったら小項目も初期値に戻す
+    //　中項目が設定されていながら大項目が設定されていない場合は警告表示し中項目も初期値に戻す
+    $("#pref").change(function(){
+        if($("#pref").val()=="0"){
+            $("#area").val("0");
+        }else{
+            if ($("#ctry").val()=="0"){
+                alert("国を選んでください")
+                $("#pref").val("0");
+            }
+        }
+    });
+    //ーーーーーーーーーーーーーーーーーーーーーーーーーーー
+    //プルダウンメニューの動作設定（３：小項目）
+    //　小項目が設定された時、楽天APIから対象の宿一覧を取得し、MapにInfoboxを描画する
+
+    $("#area").change(function(){
+
+        //--------------------------------------------
+        //3項目ともに値が設定されていた場合、処理を実行
+        //--------------------------------------------
+        if($("#ctry").val()!="0" && $("#pref").val()!="0" && $("#area").val()!="0" ){
+            //ピンオブジェクトの配列初期化（infoboxsにオブジェクトが含まれていたら全件を消去)
+            for(var i=0;i<infoboxs.length;i++){
+                infoboxs[i].setMap(null); //setMapにnullを渡しマップ上からInfoboxを消去
+            }
+            infoboxs=[]; //infoboxsの配列を初期化
+
+
+            //--------------------------------------------
+            //楽天トラベル施設検索APIよりリストを取得
+            //--------------------------------------------
+
+            //楽天トラベルAPIのエンドポイントURL
+            const url = 'https://app.rakuten.co.jp/services/api/Travel/SimpleHotelSearch/20170426?' 
+            let locations=[];
+            let locs = [];
+
+            //エンドポイントより施設リストを取得
+            $.get(url, {
+                //パラメータ
+                applicationId: "[rakuten API app ID]",  //アプリケーションID
+                format:"json", //フォーマット指定(json)
+                largeClassCode : $("#ctry").val(), //大項目(国)
+                middleClassCode : $("#pref").val(), //中項目(県)
+                smallClassCode : $("#area").val(), //小項目(地域)
+                datumType: "1",  //緯度経度タイプ(1：世界測地系、単位は度。2：日本測地系、単位は秒。
+                hits:10, //1回の取得件数(最大30件)
+                //page:3, //ページ指定（今回は指定なし）
+            }, function(data){
+                //コールバック関数内処理
+                //　戻り値(data)ないのhotels要素読み込み中間オブジェクト(locs)に整形                
+                for(i=0; i<Object.keys(data.hotels).length; i++){
+                    
+                    const title = data.hotels[i].hotel[0].hotelBasicInfo.hotelName;
+                    const desc = data.hotels[i].hotel[0].hotelBasicInfo.hotelSpecial;
+                    const lat = data.hotels[i].hotel[0].hotelBasicInfo.latitude;
+                    const lng = data.hotels[i].hotel[0].hotelBasicInfo.longitude;
+                    
+                    locs.push(
+                        {"title":title, "description":desc, "latitude":lat,"longitude":lng}
+                    );
+                    
+                }
+
+                //　中間オブジェクト(locs)を元にそれぞれのInfoboxを生成
+                for(i=0;i<locs.length;i++){
+                    locations[i] = new Microsoft.Maps.Location(locs[i].latitude, locs[i].longitude)
+                    const infobox = new Microsoft.Maps.Infobox(locations[i], {
+                        title: locs[i].title,
+                        description: locs[i].description
+                    });
+                    infoboxs.push(infobox); //Infoboxオブジェクトを配列に格納
+                }
+                //Infoboxオブジェクトを格納した配列内の要素を全件マップに紐付け
+                for(var i=0;i<infoboxs.length;i++){
+                    infoboxs[i].setMap(map); //Add infobox to Map
+                }
+
+                //Map際描画処理
+                map.setView({
+                    mapTypeId: Microsoft.Maps.MapTypeId.road,
+                    //center: new Microsoft.Maps.Location(35.027222, -111.0225),
+                    //zoom: auto,
+                    bounds: Microsoft.Maps.LocationRect.fromLocations(locations), //fromLocations or fromShapes
+                    padding: 100
+                });
+
+            });
+        }else{
+            if ($("#ctry").val()=="0" || $("#pref").val()=="0" ){
+                alert("国と県を選んでください")
+                $("#area").val("0");
+            }
+        }
+    });
+</script>
+</body>
+</html>
